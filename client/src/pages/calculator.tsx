@@ -185,8 +185,50 @@ function AddressSearch({
     }
     setIsSearching(true);
     try {
-      const res = await fetch(`${API_BASE}/api/address-search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
+      // Try backend first, fall back to direct Nominatim call (for static hosting)
+      let data: any;
+      try {
+        const res = await fetch(`${API_BASE}/api/address-search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          data = await res.json();
+        } else {
+          throw new Error("backend unavailable");
+        }
+      } catch {
+        // Direct Nominatim call (works on GitHub Pages / static hosting)
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=us&format=json&addressdetails=1&limit=6`;
+        const nomRes = await fetch(url, {
+          headers: { "Accept": "application/json" },
+        });
+        const nomData = await nomRes.json();
+        const mapped = nomData
+          .filter((item: any) => {
+            const type = item.type || "";
+            const category = item.class || "";
+            return (
+              category === "place" || category === "building" || category === "highway" ||
+              type === "house" || type === "residential" || type === "apartments" ||
+              type === "suburb" || type === "city" || type === "town" ||
+              type === "village" || type === "hamlet" || item.address?.house_number
+            );
+          })
+          .map((item: any) => {
+            const addr = item.address || {};
+            return {
+              displayName: item.display_name,
+              street: [addr.house_number, addr.road].filter(Boolean).join(" "),
+              city: addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || "",
+              state: addr.state || "",
+              stateCode: addr["ISO3166-2-lvl4"]?.replace("US-", "") || "",
+              zipCode: addr.postcode?.split("-")[0] || "",
+              county: addr.county || "",
+              lat: parseFloat(item.lat),
+              lon: parseFloat(item.lon),
+            };
+          })
+          .filter((r: any) => r.zipCode && r.stateCode);
+        data = { results: mapped };
+      }
       setResults(data.results || []);
       setShowDropdown(true);
     } catch {
