@@ -37,6 +37,8 @@ import {
   X,
   ExternalLink,
   Pencil,
+  FileText,
+  Receipt,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, BarChart, Bar } from "recharts";
 import {
@@ -53,6 +55,11 @@ import {
   type UtilityInputs,
   type UtilityEstimates,
 } from "@/lib/utilities";
+import {
+  estimateClosingCosts,
+  closingCostPercentage,
+  type ClosingCostInputs,
+} from "@/lib/closing-costs";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
@@ -569,8 +576,24 @@ export default function CalculatorPage() {
   const [trashOverride, setTrashOverride] = useState<number | null>(null);
   const [internetOverride, setInternetOverride] = useState<number | null>(null);
 
+  // Closing cost overrides
+  const [ccLoanOriginationOverride, setCcLoanOriginationOverride] = useState<number | null>(null);
+  const [ccAppraisalOverride, setCcAppraisalOverride] = useState<number | null>(null);
+  const [ccCreditReportOverride, setCcCreditReportOverride] = useState<number | null>(null);
+  const [ccTitleSearchOverride, setCcTitleSearchOverride] = useState<number | null>(null);
+  const [ccLenderTitleInsOverride, setCcLenderTitleInsOverride] = useState<number | null>(null);
+  const [ccOwnerTitleInsOverride, setCcOwnerTitleInsOverride] = useState<number | null>(null);
+  const [ccEscrowFeeOverride, setCcEscrowFeeOverride] = useState<number | null>(null);
+  const [ccRecordingFeeOverride, setCcRecordingFeeOverride] = useState<number | null>(null);
+  const [ccTransferTaxOverride, setCcTransferTaxOverride] = useState<number | null>(null);
+  const [ccHomeInspectionOverride, setCcHomeInspectionOverride] = useState<number | null>(null);
+  const [ccPestInspectionOverride, setCcPestInspectionOverride] = useState<number | null>(null);
+  const [ccSurveyOverride, setCcSurveyOverride] = useState<number | null>(null);
+  const [ccAttorneyFeeOverride, setCcAttorneyFeeOverride] = useState<number | null>(null);
+  const [ccPrepaidInterestOverride, setCcPrepaidInterestOverride] = useState<number | null>(null);
+
   // Active section
-  const [activeSection, setActiveSection] = useState<"mortgage" | "utilities">("mortgage");
+  const [activeSection, setActiveSection] = useState<"mortgage" | "utilities" | "closing">("mortgage");
 
   // Address just changed indicator
   const [addressJustChanged, setAddressJustChanged] = useState(false);
@@ -640,6 +663,22 @@ export default function CalculatorPage() {
     setTrashOverride(null);
     setInternetOverride(null);
 
+    // Reset closing cost overrides for new address
+    setCcLoanOriginationOverride(null);
+    setCcAppraisalOverride(null);
+    setCcCreditReportOverride(null);
+    setCcTitleSearchOverride(null);
+    setCcLenderTitleInsOverride(null);
+    setCcOwnerTitleInsOverride(null);
+    setCcEscrowFeeOverride(null);
+    setCcRecordingFeeOverride(null);
+    setCcTransferTaxOverride(null);
+    setCcHomeInspectionOverride(null);
+    setCcPestInspectionOverride(null);
+    setCcSurveyOverride(null);
+    setCcAttorneyFeeOverride(null);
+    setCcPrepaidInterestOverride(null);
+
     // Show address-changed prompt
     setAddressJustChanged(true);
     if (addressChangeTimeout.current) clearTimeout(addressChangeTimeout.current);
@@ -687,6 +726,31 @@ export default function CalculatorPage() {
 
   const utilities = useMemo(() => estimateUtilities(utilityInputs), [utilityInputs]);
 
+  // Closing cost calculations
+  const closingCostInputs: ClosingCostInputs = useMemo(() => ({
+    homePrice,
+    loanAmount: homePrice - (homePrice * downPaymentPercent / 100),
+    stateCode: zipLookupState,
+    loanOriginationOverride: ccLoanOriginationOverride,
+    appraisalOverride: ccAppraisalOverride,
+    creditReportOverride: ccCreditReportOverride,
+    titleSearchOverride: ccTitleSearchOverride,
+    lenderTitleInsuranceOverride: ccLenderTitleInsOverride,
+    ownerTitleInsuranceOverride: ccOwnerTitleInsOverride,
+    escrowFeeOverride: ccEscrowFeeOverride,
+    recordingFeeOverride: ccRecordingFeeOverride,
+    transferTaxOverride: ccTransferTaxOverride,
+    homeInspectionOverride: ccHomeInspectionOverride,
+    pestInspectionOverride: ccPestInspectionOverride,
+    surveyOverride: ccSurveyOverride,
+    attorneyFeeOverride: ccAttorneyFeeOverride,
+    prepaidInterestOverride: ccPrepaidInterestOverride,
+    includePrepaidTaxes: true,
+    includePrepaidInsurance: true,
+  }), [homePrice, downPaymentPercent, zipLookupState, ccLoanOriginationOverride, ccAppraisalOverride, ccCreditReportOverride, ccTitleSearchOverride, ccLenderTitleInsOverride, ccOwnerTitleInsOverride, ccEscrowFeeOverride, ccRecordingFeeOverride, ccTransferTaxOverride, ccHomeInspectionOverride, ccPestInspectionOverride, ccSurveyOverride, ccAttorneyFeeOverride, ccPrepaidInterestOverride]);
+
+  const closingCosts = useMemo(() => estimateClosingCosts(closingCostInputs), [closingCostInputs]);
+
   const downPaymentAmount = homePrice * downPaymentPercent / 100;
   const loanAmount = homePrice - downPaymentAmount;
   const totalInterest = schedule.reduce((sum, row) => sum + row.interest, 0);
@@ -694,13 +758,15 @@ export default function CalculatorPage() {
 
   // ─── Key Home Buying Metrics ───
   const pricePerSqft = propertySqft > 0 ? homePrice / propertySqft : 0;
-  const totalCostOfOwnership = homePrice + totalInterest + (breakdown.propertyTax + breakdown.homeInsurance + utilities.total) * loanTermYears * 12;
+  const totalCostOfOwnership = homePrice + totalInterest + closingCosts.totalClosingCosts + (breakdown.propertyTax + breakdown.homeInsurance + utilities.total) * loanTermYears * 12;
   const annualCost = totalMonthlyCost * 12;
   const breakEvenRentMonthly = breakdown.total; // monthly cost where renting equals buying (housing portion)
   const loanToValue = homePrice > 0 ? (loanAmount / homePrice) * 100 : 0;
   const totalMonthlyHousing = breakdown.total; // mortgage + tax + insurance (no utilities)
   // 5-year equity projection
   const fiveYearEquity = schedule.filter(r => r.month <= 60).reduce((sum, r) => sum + r.principal, 0) + downPaymentAmount;
+
+  const cashToClose = downPaymentAmount + closingCosts.totalClosingCosts;
 
   return (
     <div className="min-h-screen bg-background">
@@ -746,6 +812,10 @@ export default function CalculatorPage() {
                 <div className="bg-card border border-border rounded-lg px-4 py-2.5 min-w-[140px]">
                   <p className="text-xs text-muted-foreground">Utilities</p>
                   <p className="text-lg font-semibold font-mono tabular-nums" data-testid="text-utilities-subtotal">{formatCurrency(utilities.total)}</p>
+                </div>
+                <div className="bg-card border border-border rounded-lg px-4 py-2.5 min-w-[140px]">
+                  <p className="text-xs text-muted-foreground">Cash to Close</p>
+                  <p className="text-lg font-semibold font-mono tabular-nums" data-testid="text-cash-to-close">{homePrice > 0 ? formatCurrency(cashToClose) : "—"}</p>
                 </div>
                 {homePrice > 0 && propertySqft > 0 && (
                   <div className="bg-card border border-border rounded-lg px-4 py-2.5 min-w-[120px]">
@@ -870,9 +940,10 @@ export default function CalculatorPage() {
           <div className="lg:col-span-5 space-y-4">
             {/* Section Tabs */}
             <Tabs value={activeSection} onValueChange={(v) => setActiveSection(v as any)}>
-              <TabsList className="w-full grid grid-cols-2">
+              <TabsList className="w-full grid grid-cols-3">
                 <TabsTrigger value="mortgage" data-testid="tab-mortgage-inputs">Mortgage</TabsTrigger>
                 <TabsTrigger value="utilities" data-testid="tab-utilities-inputs">Utilities</TabsTrigger>
+                <TabsTrigger value="closing" data-testid="tab-closing-inputs">Closing Costs</TabsTrigger>
               </TabsList>
 
               {/* ─── Mortgage Inputs ─── */}
@@ -1020,6 +1091,100 @@ export default function CalculatorPage() {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              {/* ─── Closing Costs Inputs ─── */}
+              <TabsContent value="closing" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Receipt className="h-4 w-4 text-primary" />
+                      Estimated Closing Costs
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      One-time costs due at closing. Click any amount to override with your actual quote.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="pt-2 space-y-4">
+                    {/* Lender Fees */}
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Lender Fees</p>
+                      <div className="divide-y divide-border">
+                        <UtilityRow icon={DollarSign} label="Loan Origination" estimate={estimateClosingCosts({...closingCostInputs, loanOriginationOverride: null}).loanOrigination} override={ccLoanOriginationOverride} onOverride={setCcLoanOriginationOverride} testId="cc-loan-origination" />
+                        <UtilityRow icon={FileText} label="Appraisal" estimate={estimateClosingCosts({...closingCostInputs, appraisalOverride: null}).appraisal} override={ccAppraisalOverride} onOverride={setCcAppraisalOverride} testId="cc-appraisal" />
+                        <UtilityRow icon={FileText} label="Credit Report" estimate={estimateClosingCosts({...closingCostInputs, creditReportOverride: null}).creditReport} override={ccCreditReportOverride} onOverride={setCcCreditReportOverride} testId="cc-credit-report" />
+                      </div>
+                      <div className="flex justify-between pt-1 text-xs">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-mono tabular-nums font-medium">{formatCurrency(closingCosts.totalLenderFees)}</span>
+                      </div>
+                    </div>
+                    {/* Title & Escrow */}
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Title & Escrow</p>
+                      <div className="divide-y divide-border">
+                        <UtilityRow icon={Search} label="Title Search" estimate={estimateClosingCosts({...closingCostInputs, titleSearchOverride: null}).titleSearch} override={ccTitleSearchOverride} onOverride={setCcTitleSearchOverride} testId="cc-title-search" />
+                        <UtilityRow icon={Shield} label="Lender's Title Ins." estimate={estimateClosingCosts({...closingCostInputs, lenderTitleInsuranceOverride: null}).lenderTitleInsurance} override={ccLenderTitleInsOverride} onOverride={setCcLenderTitleInsOverride} testId="cc-lender-title" />
+                        <UtilityRow icon={Shield} label="Owner's Title Ins." estimate={estimateClosingCosts({...closingCostInputs, ownerTitleInsuranceOverride: null}).ownerTitleInsurance} override={ccOwnerTitleInsOverride} onOverride={setCcOwnerTitleInsOverride} testId="cc-owner-title" />
+                        <UtilityRow icon={DollarSign} label="Escrow Fee" estimate={estimateClosingCosts({...closingCostInputs, escrowFeeOverride: null}).escrowFee} override={ccEscrowFeeOverride} onOverride={setCcEscrowFeeOverride} testId="cc-escrow" />
+                      </div>
+                      <div className="flex justify-between pt-1 text-xs">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-mono tabular-nums font-medium">{formatCurrency(closingCosts.totalTitleEscrow)}</span>
+                      </div>
+                    </div>
+                    {/* Government Fees */}
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Government Fees</p>
+                      <div className="divide-y divide-border">
+                        <UtilityRow icon={FileText} label="Recording Fee" estimate={estimateClosingCosts({...closingCostInputs, recordingFeeOverride: null}).recordingFee} override={ccRecordingFeeOverride} onOverride={setCcRecordingFeeOverride} testId="cc-recording" />
+                        <UtilityRow icon={FileText} label="Transfer Tax" estimate={estimateClosingCosts({...closingCostInputs, transferTaxOverride: null}).transferTax} override={ccTransferTaxOverride} onOverride={setCcTransferTaxOverride} testId="cc-transfer-tax" />
+                      </div>
+                      <div className="flex justify-between pt-1 text-xs">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-mono tabular-nums font-medium">{formatCurrency(closingCosts.totalGovernment)}</span>
+                      </div>
+                    </div>
+                    {/* Inspections */}
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Inspections</p>
+                      <div className="divide-y divide-border">
+                        <UtilityRow icon={Search} label="Home Inspection" estimate={estimateClosingCosts({...closingCostInputs, homeInspectionOverride: null}).homeInspection} override={ccHomeInspectionOverride} onOverride={setCcHomeInspectionOverride} testId="cc-home-inspection" />
+                        <UtilityRow icon={Search} label="Pest Inspection" estimate={estimateClosingCosts({...closingCostInputs, pestInspectionOverride: null}).pestInspection} override={ccPestInspectionOverride} onOverride={setCcPestInspectionOverride} testId="cc-pest-inspection" />
+                        <UtilityRow icon={Search} label="Survey" estimate={estimateClosingCosts({...closingCostInputs, surveyOverride: null}).survey} override={ccSurveyOverride} onOverride={setCcSurveyOverride} testId="cc-survey" />
+                      </div>
+                      <div className="flex justify-between pt-1 text-xs">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-mono tabular-nums font-medium">{formatCurrency(closingCosts.totalInspections)}</span>
+                      </div>
+                    </div>
+                    {/* Other */}
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Other</p>
+                      <div className="divide-y divide-border">
+                        <UtilityRow icon={FileText} label="Attorney Fee" estimate={estimateClosingCosts({...closingCostInputs, attorneyFeeOverride: null}).attorneyFee} override={ccAttorneyFeeOverride} onOverride={setCcAttorneyFeeOverride} testId="cc-attorney" />
+                        <UtilityRow icon={DollarSign} label="Prepaid Interest (~15 days)" estimate={estimateClosingCosts({...closingCostInputs, prepaidInterestOverride: null}).prepaidInterest} override={ccPrepaidInterestOverride} onOverride={setCcPrepaidInterestOverride} testId="cc-prepaid-interest" />
+                      </div>
+                      <div className="flex justify-between pt-1 text-xs">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-mono tabular-nums font-medium">{formatCurrency(closingCosts.totalOther)}</span>
+                      </div>
+                    </div>
+                    {/* Total */}
+                    <div className="flex items-center justify-between pt-3 mt-1 border-t border-border">
+                      <div>
+                        <span className="text-sm font-semibold">Total Closing Costs</span>
+                        {homePrice > 0 && <span className="text-xs text-muted-foreground ml-2">({closingCostPercentage(closingCosts.totalClosingCosts, homePrice)} of price)</span>}
+                      </div>
+                      <span className="text-sm font-mono tabular-nums font-bold" data-testid="text-closing-total">{formatCurrency(closingCosts.totalClosingCosts)}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-sm font-semibold text-primary">Cash to Close</span>
+                      <span className="text-sm font-mono tabular-nums font-bold text-primary" data-testid="text-cash-to-close-detail">{homePrice > 0 ? formatCurrency(cashToClose) : "—"}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Down payment ({formatCurrency(downPaymentAmount)}) + closing costs ({formatCurrency(closingCosts.totalClosingCosts)})</p>
+                  </CardContent>
+                </Card>
+              </TabsContent>
             </Tabs>
           </div>
 
@@ -1114,6 +1279,16 @@ export default function CalculatorPage() {
                     <p className="text-xs text-muted-foreground mb-0.5">Total Cost of Ownership</p>
                     <p className="font-semibold text-sm font-mono tabular-nums">{homePrice > 0 ? formatCurrency(totalCostOfOwnership) : "—"}</p>
                     <p className="text-[10px] text-muted-foreground">Purchase + interest + taxes + insurance + utilities</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Closing Costs</p>
+                    <p className="font-semibold text-sm font-mono tabular-nums">{homePrice > 0 ? formatCurrency(closingCosts.totalClosingCosts) : "—"}</p>
+                    {homePrice > 0 && <p className="text-[10px] text-muted-foreground">{closingCostPercentage(closingCosts.totalClosingCosts, homePrice)} of purchase price</p>}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Cash to Close</p>
+                    <p className="font-semibold text-sm font-mono tabular-nums text-primary">{homePrice > 0 ? formatCurrency(cashToClose) : "—"}</p>
+                    <p className="text-[10px] text-muted-foreground">Down payment + closing costs</p>
                   </div>
                 </div>
               </CardContent>
